@@ -205,3 +205,15 @@
                     const tracksToAdd = [...new Set(newTracks)].slice(0, 100);
                     await apiCall(`/playlists/${playlistId}/tracks`, 'PUT', {
                         uris: tracksToAdd
+                    });
+                    log(`🎉 Fatto! Aggiunti ${tracksToAdd.length} brani alla playlist.`);
+                }
+
+            } catch (err) {
+                log("Errore: " + err.message);
+                console.error(err);
+            }
+        });
+    </script>
+</body>
+</html>
