@@ -16,7 +16,7 @@
 <body>
 
     <h1>Daily Release Radar 🎧</h1>
-    <p>Genera il tuo Release Radar giornaliero.</p>
+    <p>Genera il tuo Release Radar giornaliero su tutti i tuoi artisti.</p>
 
     <!-- Sezione Login -->
     <div id="login-section">
@@ -124,33 +124,47 @@
                 options.headers['Content-Type'] = 'application/json';
                 options.body = JSON.stringify(body);
             }
-            const res = await fetch('https://api.spotify.com/v1' + endpoint, options);
+            
+            // Se l'endpoint è un URL completo lo usiamo direttamente, altrimenti aggiungiamo il prefisso API
+            let fetchUrl = endpoint.startsWith('http') ? endpoint : 'https://api.spotify.com/v1' + endpoint;
+
+            const res = await fetch(fetchUrl, options);
             if (res.status === 204) return null;
             return await res.json();
         }
 
         document.getElementById('generate-btn').addEventListener('click', async () => {
-            log("Inizio scansione artisti seguiti...");
+            log("Inizio scansione di TUTTI gli artisti seguiti...");
             try {
                 let artists = [];
+                // Usiamo il parametro 'after' per scorrere correttamente tutta la lista senza limiti
                 let url = '/me/following?type=artist&limit=50';
                 
                 while (url) {
-                    const data = await apiCall(url.replace('https://api.spotify.com/v1', ''));
+                    const data = await apiCall(url);
                     if (data && data.artists && data.artists.items) {
                         artists.push(...data.artists.items);
-                        url = data.artists.next;
+                        log(`Scaricati ${artists.length} artisti...`);
+                        
+                        // Gestione corretta della paginazione Spotify
+                        if (data.artists.next) {
+                            url = data.artists.next;
+                        } else {
+                            url = null;
+                        }
                     } else {
                         break;
                     }
+                    // Piccola pausa per non intasare l'API
+                    await new Promise(r => setTimeout(r, 100));
                 }
-                log(`Trovati ${artists.length} artisti seguiti. Controllo uscite...`);
+                log(`✅ Totale artisti seguiti trovati: <b>${artists.length}</b>. Controllo uscite recenti...`);
 
                 let newTracks = [];
                 const today = new Date();
 
                 for (let artist of artists) {
-                    const albumsData = await apiCall(`/artists/${artist.id}/albums?include_groups=album,single&limit=3`);
+                    const albumsData = await apiCall(`/artists/${artist.id}/albums?include_groups=album,single&limit=5`);
                     if (albumsData && albumsData.items) {
                         for (let album of albumsData.items) {
                             if (album.release_date_precision === 'day') {
@@ -170,10 +184,12 @@
                             }
                         }
                     }
+                    // Breve pausa per ogni artista scansionato
+                    await new Promise(r => setTimeout(r, 50));
                 }
 
                 if (newTracks.length === 0) {
-                    log("Nessuna nuova uscita trovata nelle ultime 48 ore.");
+                    log("Nessuna nuova uscita trovata nelle ultime 48 ore tra i tuoi artisti.");
                     return;
                 }
 
