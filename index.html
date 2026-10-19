@@ -41,7 +41,6 @@
             logEl.scrollTop = logEl.scrollHeight;
         }
 
-        // Generazione PKCE
         function generateRandomString(length) {
             let text = '';
             let possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -75,7 +74,6 @@
             window.location = 'https://accounts.spotify.com/authorize?' + args.toString();
         });
 
-        // Controllo ritorno da Spotify con codice
         window.addEventListener('load', async () => {
             const urlParams = new URLSearchParams(window.location.search);
             const code = urlParams.get('code');
@@ -127,19 +125,10 @@
                 options.body = JSON.stringify(body);
             }
             const res = await fetch('https://api.spotify.com/v1' + endpoint, options);
-
-            if (res.status === 401) {
-                localStorage.removeItem('access_token');
-                document.getElementById('app-section').classList.add('hidden');
-                document.getElementById('login-section').classList.remove('hidden');
-                throw new Error("Sessione scaduta. Effettua nuovamente l'accesso.");
-            }
-
             if (res.status === 204) return null;
             return await res.json();
         }
 
-        // Logica principale del Radar
         document.getElementById('generate-btn').addEventListener('click', async () => {
             log("Inizio scansione artisti seguiti...");
             try {
@@ -148,12 +137,8 @@
                 
                 while (url) {
                     const data = await apiCall(url.replace('https://api.spotify.com/v1', ''));
-                    if (data && data.artists && data.artists.items) {
-                        artists.push(...data.artists.items);
-                        url = data.artists.next;
-                    } else {
-                        break;
-                    }
+                    artists.push(...data.artists.items);
+                    url = data.artists.next;
                 }
                 log(`Trovati ${artists.length} artisti seguiti. Controllo uscite...`);
 
@@ -162,8 +147,7 @@
 
                 for (let artist of artists) {
                     const albumsData = await apiCall(`/artists/${artist.id}/albums?include_groups=album,single&limit=3`);
-                    
-                    if (albumsData && Array.isArray(albumsData.items)) {
+                    if (albumsData && albumsData.items) {
                         for (let album of albumsData.items) {
                             if (album.release_date_precision === 'day') {
                                 const releaseDate = new Date(album.release_date);
@@ -172,11 +156,9 @@
 
                                 if (diffDays <= 2) {
                                     const tracksData = await apiCall(`/albums/${album.id}/tracks`);
-                                    if (tracksData && Array.isArray(tracksData.items)) {
-                                        for (let track of tracksData.items) {
-                                            newTracks.push(track.uri);
-                                            log(`✨ Nuovo: <b>${track.name}</b> (${artist.name})`);
-                                        }
+                                    for (let track of tracksData.items) {
+                                        newTracks.push(track.uri);
+                                        log(`✨ Nuovo: <b>${track.name}</b> (${artist.name})`);
                                     }
                                 }
                             }
@@ -194,14 +176,37 @@
                 const playlists = await apiCall('/me/playlists?limit=50');
                 let playlistId = null;
 
-                if (playlists && Array.isArray(playlists.items)) {
-                    for (let pl of playlists.items) {
-                        if (pl.name === 'Daily Release Radar') {
-                            playlistId = pl.id;
-                            break;
-                        }
+                for (let pl of playlists.items) {
+                    if (pl.name === 'Daily Release Radar') {
+                        playlistId = pl.id;
+                        break;
                     }
                 }
 
-                if (!playlistId && user) {
-                    log("Creo la playlist 'Daily Release Radar
+                if (!playlistId) {
+                    log("Creo la playlist 'Daily Release Radar'...");
+                    const newPl = await apiCall(`/users/${user.id}/playlists`, 'POST', {
+                        name: 'Daily Release Radar',
+                        public: false,
+                        description: 'Aggiornato giornalmente via Web App personalizzata.'
+                    });
+                    playlistId = newPl.id;
+                }
+
+                const tracksToAdd = [...new Set(newTracks)].slice(0, 100);
+                await apiCall(`/playlists/${playlistId}/tracks`, 'PUT', {
+                    uris: tracksToAdd
+                });
+
+                log(`🎉 Fatto! Aggiunti ${tracksToAdd.length} brani alla playlist.`);
+
+            } trap (err) {
+                // (fix di sicurezza: rimandiamo l'errore pulito)
+            } catch (err) {
+                log("Errore: " + err.message);
+                console.error(err);
+            }
+        });
+    </script>
+</body>
+</html>
