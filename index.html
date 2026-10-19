@@ -7,11 +7,8 @@
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #121212; color: #ffffff; padding: 20px; max-width: 600px; margin: auto; }
         h1 { color: #1db954; font-size: 24px; }
-        button, input { width: 100%; padding: 12px 20px; font-size: 16px; border-radius: 30px; box-sizing: border-box; margin-top: 10px; }
-        input { background-color: #282828; border: 1px solid #3e3e3e; color: white; text-align: center; }
-        button { background-color: #1db954; color: white; border: none; font-weight: bold; cursor: pointer; }
+        button { width: 100%; padding: 14px 20px; font-size: 16px; border-radius: 30px; box-sizing: border-box; margin-top: 15px; background-color: #1db954; color: white; border: none; font-weight: bold; cursor: pointer; }
         button:active { background-color: #1aa34a; }
-        .secondary { background-color: #3e3e3e; font-size: 13px; padding: 8px; margin-top: 15px; }
         #log { background: #181818; padding: 15px; border-radius: 8px; margin-top: 20px; height: 300px; overflow-y: auto; font-family: monospace; font-size: 13px; border: 1px solid #282828; }
         .hidden { display: none; }
     </style>
@@ -19,19 +16,11 @@
 <body>
 
     <h1>Daily Release Radar 🎧</h1>
-    <p>Genera il tuo Release Radar giornaliero sul telefono.</p>
-
-    <!-- Sezione configurazione Client ID (visibile solo la prima volta) -->
-    <div id="setup-section">
-        <p style="font-size: 14px; color: #b3b3b3;">Inserisci il tuo Client ID di Spotify (lo salveremo sul telefono):</p>
-        <input type="text" id="client-id-input" placeholder="Incolla qui il Client ID...">
-        <button id="save-client-btn">Salva e Continua</button>
-    </div>
+    <p>Genera il tuo Release Radar giornaliero.</p>
 
     <!-- Sezione Login -->
-    <div id="login-section" class="hidden">
+    <div id="login-section">
         <button id="login-btn">Accedi con Spotify</button>
-        <button id="reset-client-btn" class="secondary">Cambia Client ID</button>
     </div>
 
     <!-- Sezione App principale -->
@@ -39,45 +28,17 @@
         <button id="generate-btn">Cerca Uscite e Aggiorna Playlist</button>
     </div>
 
-    <div id="log">Pronto. Configura il Client ID per iniziare...</div>
+    <div id="log">Pronto. Clicca su accedi per iniziare...</div>
 
     <script>
-        const REDIRECT_URI = window.location.href.split('?')[0]; 
+        const CLIENT_ID = "e03d270b21e645a59c6385ea8c9108bb"; 
+        const REDIRECT_URI = "https://davesnob.github.io/spotifyReleaseAllDay/";
         const SCOPES = "user-follow-read playlist-modify-private playlist-modify-public";
 
         const logEl = document.getElementById('log');
         function log(text) {
             logEl.innerHTML += `<br>` + text;
             logEl.scrollTop = logEl.scrollHeight;
-        }
-
-        // Gestione salvataggio Client ID
-        const savedClientId = localStorage.getItem('spotify_client_id');
-        if (savedClientId) {
-            document.getElementById('setup-section').classList.add('hidden');
-            document.getElementById('login-section').classList.remove('hidden');
-        }
-
-        document.getElementById('save-client-btn').addEventListener('click', () => {
-            const inputVal = document.getElementById('client-id-input').value.trim();
-            if (inputVal.length > 10) {
-                localStorage.setItem('spotify_client_id', inputVal);
-                document.getElementById('setup-section').classList.add('hidden');
-                document.getElementById('login-section').classList.remove('hidden');
-                log("Client ID salvato con successo!");
-            } else {
-                alert("Inserisci un Client ID valido.");
-            }
-        });
-
-        document.getElementById('reset-client-btn').addEventListener('click', () => {
-            localStorage.removeItem('spotify_client_id');
-            localStorage.removeItem('access_token');
-            location.reload();
-        });
-
-        function getClientId() {
-            return localStorage.getItem('spotify_client_id');
         }
 
         // Generazione PKCE
@@ -104,7 +65,7 @@
 
             const args = new URLSearchParams({
                 response_type: 'code',
-                client_id: getClientId(),
+                client_id: CLIENT_ID,
                 scope: SCOPES,
                 redirect_uri: REDIRECT_URI,
                 code_challenge_method: 'S256',
@@ -119,15 +80,13 @@
             const urlParams = new URLSearchParams(window.location.search);
             const code = urlParams.get('code');
 
-            if (code && getClientId()) {
-                document.getElementById('setup-section').classList.add('hidden');
+            if (code) {
                 document.getElementById('login-section').classList.add('hidden');
                 document.getElementById('app-section').classList.remove('hidden');
-                log("Autenticazione riuscita! Ottenere token...");
+                log("Autenticazione riuscita! Ottengo il token...");
                 await exchangeCodeForToken(code);
                 window.history.replaceState({}, document.title, REDIRECT_URI);
-            } else if (localStorage.getItem('access_token') && getClientId()) {
-                document.getElementById('setup-section').classList.add('hidden');
+            } else if (localStorage.getItem('access_token')) {
                 document.getElementById('login-section').classList.add('hidden');
                 document.getElementById('app-section').classList.remove('hidden');
                 log("Sessione attiva trovata.");
@@ -140,7 +99,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({
-                    client_id: getClientId(),
+                    client_id: CLIENT_ID,
                     grant_type: 'authorization_code',
                     code: code,
                     redirect_uri: REDIRECT_URI,
@@ -168,6 +127,14 @@
                 options.body = JSON.stringify(body);
             }
             const res = await fetch('https://api.spotify.com/v1' + endpoint, options);
+
+            if (res.status === 401) {
+                localStorage.removeItem('access_token');
+                document.getElementById('app-section').classList.add('hidden');
+                document.getElementById('login-section').classList.remove('hidden');
+                throw new Error("Sessione scaduta. Effettua nuovamente l'accesso.");
+            }
+
             if (res.status === 204) return null;
             return await res.json();
         }
@@ -181,8 +148,12 @@
                 
                 while (url) {
                     const data = await apiCall(url.replace('https://api.spotify.com/v1', ''));
-                    artists.push(...data.artists.items);
-                    url = data.artists.next;
+                    if (data && data.artists && data.artists.items) {
+                        artists.push(...data.artists.items);
+                        url = data.artists.next;
+                    } else {
+                        break;
+                    }
                 }
                 log(`Trovati ${artists.length} artisti seguiti. Controllo uscite...`);
 
@@ -190,18 +161,23 @@
                 const today = new Date();
 
                 for (let artist of artists) {
-                    const albumsData = await apiCall(`/artists/${artist.id}/albums?include_group=album,single&limit=3`);
-                    for (let album of albumsData.items) {
-                        if (album.release_date_precision === 'day') {
-                            const releaseDate = new Date(album.release_date);
-                            const diffTime = Math.abs(today - releaseDate);
-                            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    const albumsData = await apiCall(`/artists/${artist.id}/albums?include_groups=album,single&limit=3`);
+                    
+                    if (albumsData && Array.isArray(albumsData.items)) {
+                        for (let album of albumsData.items) {
+                            if (album.release_date_precision === 'day') {
+                                const releaseDate = new Date(album.release_date);
+                                const diffTime = Math.abs(today - releaseDate);
+                                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-                            if (diffDays <= 2) {
-                                const tracksData = await apiCall(`/albums/${album.id}/tracks`);
-                                for (let track of tracksData.items) {
-                                    newTracks.push(track.uri);
-                                    log(`✨ Nuovo: <b>${track.name}</b> (${artist.name})`);
+                                if (diffDays <= 2) {
+                                    const tracksData = await apiCall(`/albums/${album.id}/tracks`);
+                                    if (tracksData && Array.isArray(tracksData.items)) {
+                                        for (let track of tracksData.items) {
+                                            newTracks.push(track.uri);
+                                            log(`✨ Nuovo: <b>${track.name}</b> (${artist.name})`);
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -218,35 +194,14 @@
                 const playlists = await apiCall('/me/playlists?limit=50');
                 let playlistId = null;
 
-                for (let pl of playlists.items) {
-                    if (pl.name === 'Daily Release Radar') {
-                        playlistId = pl.id;
-                        break;
+                if (playlists && Array.isArray(playlists.items)) {
+                    for (let pl of playlists.items) {
+                        if (pl.name === 'Daily Release Radar') {
+                            playlistId = pl.id;
+                            break;
+                        }
                     }
                 }
 
-                if (!playlistId) {
-                    log("Creo la playlist 'Daily Release Radar'...");
-                    const newPl = await apiCall(`/users/${user.id}/playlists`, 'POST', {
-                        name: 'Daily Release Radar',
-                        public: false,
-                        description: 'Aggiornato giornalmente via Web App personalizzata.'
-                    });
-                    playlistId = newPl.id;
-                }
-
-                const tracksToAdd = [...new Set(newTracks)].slice(0, 100);
-                await apiCall(`/playlists/${playlistId}/tracks`, 'PUT', {
-                    uris: tracksToAdd
-                });
-
-                log(`🎉 Fatto! Aggiunti ${tracksToAdd.length} brani alla playlist.`);
-
-            } catch (err) {
-                log("Errore: " + err.message);
-                console.error(err);
-            }
-        });
-    </script>
-</body>
-</html>
+                if (!playlistId && user) {
+                    log("Creo la playlist 'Daily Release Radar
